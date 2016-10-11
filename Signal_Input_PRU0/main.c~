@@ -1,0 +1,134 @@
+/*
+
+
+28/08/2016   
+
+ihsan Gökhun Önel
+
+onel.gokhun@gmail.com
+
+
+P9_28 den aldığı sinyalleri genişlik periyod  ve frekans olarak
+ekranda gösteren fonksiyon.
+
+Sistemin çalışabilir olması için PR0 aktif edilip doğru overlay üzerinden 
+p31.3  input olarak ayarlanmış olmak zorundadır.
+
+
+burada PRU ve merkez CPU nun haberleşmesi Shared memeory tekniğine dayanmaktadır.
+PRU ait olan local Ram adresine Merkez çekirdek olan ARM cortex erişebilmektedir
+bu sayede bu adresi sürekli gidip okuyarak PRU tarafından güncellendiğinde  değerin geldiği anlaşılır.
+
+
+*/
+
+  #include <stdio.h>
+  #include <stdlib.h>
+  #include <stdint.h>
+  #include <prussdrv.h>
+  #include <pruss_intc_mapping.h>
+
+  #define PRU_NUM 0
+  #define PROG_NAME "SignalInput.bin"   // çalışacak assembly programının binary ismi ( önemli )
+  #define TRUE    1
+   
+  unsigned int ComputeMicroSecond(unsigned int sec)  ;  // 
+
+  
+
+
+  typedef struct 
+  {
+   unsigned   int  duty;
+   unsigned   int  lowCycle;
+   unsigned   int  width;
+   unsigned   int  period;
+   float freq;
+     
+  }Measurament;  // ölçüm değerleri
+
+  Measurament  measure;
+
+typedef struct {
+
+    uint32_t  valArray[3];
+
+  }LocalPruRam;   // PRU local RAM bu Program için burada 3 byte olacak şekilde initialize edildi
+
+  LocalPruRam *pruRam;
+
+int main(void)
+  {
+         
+         tpruss_intc_initdata pruss_intc_initdata = PRUSS_INTC_INITDATA;
+
+
+
+     // Root yetkisi olmadan program çalıştırma!! 
+     if(getuid()!=0){
+        printf(" Programi root yetkisi ile calistirmalisiniz \n");
+        exit(EXIT_FAILURE);
+     }
+
+
+ 
+
+       prussdrv_init ();// PRU subsystem driver için  Memory initialization 
+   
+       prussdrv_open (PRU_EVTOUT_0);  //PRU_EVTOUT_0 - PRU_EVTOUT_7 hosta bağlı eventlerden birini açar ve 
+      // bu eventler için memory initalziation
+       prussdrv_pruintc_init(&pruss_intc_initdata);
+       
+       prussdrv_map_prumem(PRUSS0_PRU0_DATARAM,(void **)&pruRam); // Local Ram burada Adreslenir
+      
+       memset(pruRam-> valArray , 0 , sizeof(pruRam-> valArray));    //  adreslenen RAM sıfırlanır
+     
+       prussdrv_exec_program (PRU_NUM, PROG_NAME);  // PRU işleme alınır
+		
+ 
+ 
+
+    while(TRUE)
+    {
+  
+
+
+      while(pruRam-> valArray[1]==0);  // PRU nun  tüm periyodu girmesi beklenir pooling yaparak
+
+      
+ 
+      
+         measure.width =  ComputeMicroSecond(pruRam-> valArray[0]) +  1 ;  
+         measure.lowCycle = ComputeMicroSecond(pruRam-> valArray[1])    ;
+         measure.period  =  measure.width + measure.lowCycle ; 
+         measure.freq   = (float)(  1.0  /  (measure.period )) *1000 ; 
+         measure.duty   =  ((100 *  measure.width) / (measure.period ));
+        
+         printf(" Period  =   %d us   |   Width  = %d us   |   Frekans  =  %f kHz    | Duty : %d % \n", measure.period ,  measure.width   ,
+                                                                                                       measure.freq , measure.duty);
+       
+         sleep(1);  // sn de bir gidip sorgu yapılır
+        
+        pruRam-> valArray[0] = 0 ;  // RAM bölgesini  sıfırla
+        pruRam-> valArray[1] = 0 ;  // RAM bölgesini  sıfırla
+        pruRam-> valArray[2] = 0xFFFFFFFF ; // PRU için tekrar ölçüme başlama sinyali
+        
+}
+    
+     prussdrv_pru_disable(PRU_NUM);  // buraya hiç gelmeyecek 
+     prussdrv_exit ();
+
+
+     return EXIT_SUCCESS;
+  }
+
+unsigned int ComputeMicroSecond(unsigned int sec)  
+   { 
+
+      unsigned int res;
+      res = ( (sec * 15 )/1000 );
+        
+           return  res ;
+      
+
+  }
