@@ -1,0 +1,36 @@
+  
+/dts-v1/;
+/plugin/;
+
+/ {
+   compatible = "ti,beaglebone", "ti,beaglebone-black";
+
+   part-number = "Two-Channel-PRU1";
+   version = "00A0";
+
+   /* This overlay uses the following resources */
+   exclusive-use =
+          "P8.45",  "pru1";
+
+   fragment@0 {
+      target = <&am33xx_pinmux>;
+      __overlay__ {
+       
+         pru_pru_pins: pinmux_pru_pru_pins {   // The PRU pin modes
+            pinctrl-single,pins = <
+ 			0x0a0  0x26  // P8_45 pr1_pru0_pru_r31_3, MODE6 | INPUT | PRU         
+ 			  >;
+         };
+      };
+   };
+
+   fragment@1 {         // Enable the PRUSS
+      target = <&pruss>;
+      __overlay__ {
+         status = "okay";
+         pinctrl-names = "default";
+         pinctrl-0 = <&pru_pru_pins>;
+      };
+   };
+
+};
